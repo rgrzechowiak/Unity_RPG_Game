@@ -2,103 +2,119 @@ using UnityEngine;
 
 public class PlayerControls : MonoBehaviour
 {
-    [SerializeField]
-    private Transform _Camera;
-    private CharacterController controller;
-    private float verticalVelocity;
-    private float groundedTimer;        // to allow jumping when going down ramps
-    private float playerSpeed = 5f;
-    private float jumpHeight = 1.0f;
-    private float gravityValue = 9.81f;
-    private float turnSmoothTime = 0.1f;
-    private float turnSmoothVelocity;
-    private Vector3 moveDir;
-    private Quaternion rotation;
- 
-    private void Start()
+    CharacterController controller;
+    Vector3 moveDirection = Vector3.zero;
+
+    Transform cameraTarget;
+    float cameraPitch = 40.0f;
+    float cameraYaw = 0;
+    float cameraDistance = 5.0f;
+    bool lerpYaw = false;
+    bool lerpDistance = false;
+
+    public float cameraPitchSpeed = 2.0f;
+    public float cameraPitchMin = -10.0f;
+    public float cameraPitchMax = 80.0f;
+    public float cameraYawSpeed = 5.0f;
+    public float cameraDistanceSpeed = 5.0f;
+    public float cameraDistanceMin = 2.0f;
+    public float cameraDistanceMax = 12.0f;
+    public float moveDirectionSpeed = 6.0f;
+    public float turnSpeed = 3.0f;
+    public float jumpSpeed = 8.0f;
+    public float gravitySpeed = 20.0f;
+
+    public void Start()
     {
-        // always add a controller
-        controller = gameObject.AddComponent<CharacterController>();
-        moveDir = new Vector3();
+        GetComponent<MeshRenderer>().material.color = Color.blue;
+
+        controller = GetComponent<CharacterController>();
+        cameraTarget = transform; // Camera will always face this
     }
- 
-    void Update()
+
+    // Fixme: save all Inputs in Update, then look at saved values here and in FixedUpdate
+    // Fixme: camera code should be in its own script probably
+    public void LateUpdate()
     {
-        bool groundedPlayer = controller.isGrounded;
-        if (groundedPlayer)
+        // If mouse button down then allow user to look around
+        if (Input.GetMouseButton(0) || Input.GetMouseButton(1))
         {
-            // cooldown interval to allow reliable jumping even whem coming down ramps
-            groundedTimer = 0.2f;
+            cameraPitch += Input.GetAxis("Mouse Y") * cameraPitchSpeed;
+            cameraPitch = Mathf.Clamp(cameraPitch, cameraPitchMin, cameraPitchMax);
+            cameraYaw += Input.GetAxis("Mouse X") * cameraYawSpeed;
+            cameraYaw = cameraYaw % 360.0f;
+            lerpYaw = false;
         }
-        if (groundedTimer > 0)
+        else
         {
-            groundedTimer -= Time.deltaTime;
+            // If moving then make camera follow
+            if (lerpYaw)
+                cameraYaw = Mathf.LerpAngle(cameraYaw, cameraTarget.eulerAngles.y, 5.0f * Time.deltaTime);
         }
- 
-        // slam into the ground
-        if (groundedPlayer && verticalVelocity < 0)
+
+        // Zoom
+        if (Input.GetAxis("Mouse ScrollWheel") != 0)
         {
-            // hit ground
-            verticalVelocity = 0f;
+            cameraDistance -= Input.GetAxis("Mouse ScrollWheel") * cameraDistanceSpeed;
+            cameraDistance = Mathf.Clamp(cameraDistance, cameraDistanceMin, cameraDistanceMax);
+            lerpDistance = false;
         }
- 
-        // apply gravity always, to let us track down ramps properly
-        verticalVelocity -= gravityValue * Time.deltaTime;
- 
-        // gather lateral input control
-        Vector3 move = new Vector3(Input.GetAxis("Horizontal"), 0, Input.GetAxis("Vertical"));
- 
-        // scale by speed
-        move *= playerSpeed;
 
+        // Calculate camera position
+        Vector3 newCameraPosition = cameraTarget.position + (Quaternion.Euler(cameraPitch, cameraYaw, 0) * Vector3.back * cameraDistance);
 
-        // Rotates the player based on input and camera via Quaterion; 
-
-        float cameraAngle = _Camera.eulerAngles.y;
-        float playerMovementAngle = Mathf.Atan2(move.x, move.z) * Mathf.Rad2Deg;
-        float angle = playerMovementAngle + cameraAngle;
-        rotation = Quaternion.Euler(0f, angle, 0f);
-        transform.rotation = rotation;
-
-        var rotDot = Quaternion.Dot(rotation.normalized, Quaternion.identity);
-        Debug.Log(rotDot);
-
-        // only align to motion if we are providing enough input
-        if (move.magnitude > 0.05f)
+        // Does new position put us inside anything?
+        RaycastHit hitInfo;
+        if (Physics.Linecast(cameraTarget.position, newCameraPosition, out hitInfo))
         {
-            //Move player in the direction of the current rotation
-            moveDir = rotation * Vector3.forward;
-            move = moveDir;
-
-
-            if (Quaternion.Dot(rotation.normalized, Quaternion.identity) < 0.5)
+            newCameraPosition = hitInfo.point;
+            lerpDistance = true;
+        }
+        else
+        {
+            if (lerpDistance)
             {
-                gameObject.transform.forward = -move;
+                float newCameraDistance = Mathf.Lerp(Vector3.Distance(cameraTarget.position, Camera.main.transform.position), cameraDistance, 5.0f * Time.deltaTime);
+                newCameraPosition = cameraTarget.position + (Quaternion.Euler(cameraPitch, cameraYaw, 0) * Vector3.back * newCameraDistance);
             }
+        }
+
+        Camera.main.transform.position = newCameraPosition;
+        Camera.main.transform.LookAt(cameraTarget.position);
+    }
+
+    // Fixme: add running
+    public void FixedUpdate()
+    {
+        var h = Input.GetAxis("Horizontal");
+        var v = Input.GetAxis("Vertical");
+
+        // Have camera follow if moving
+        if (!lerpYaw && (h != 0 || v != 0))
+            lerpYaw = true;
+
+        if (Input.GetMouseButton(1))
+            transform.rotation = Quaternion.Euler(0, cameraYaw, 0); // Face camera
+        else
+            transform.Rotate(0, h * turnSpeed, 0); // Turn left/right
+
+        // Only allow user control when on ground
+        if (controller.isGrounded)
+        {
+            if (Input.GetMouseButton(1))
+                moveDirection = new Vector3(h, 0, v); // Strafe
             else
-            {
-                gameObject.transform.forward = move;
-            }
+                moveDirection = Vector3.forward * v; // Move forward/backward
+
+            moveDirection = transform.TransformDirection(moveDirection);
+            moveDirection *= moveDirectionSpeed;
+            if (Input.GetButton("Jump"))
+                moveDirection.y = jumpSpeed;
+            if (Input.GetKey(KeyCode.LeftShift))
+                moveDirection *= 10;
         }
- 
-        // allow jump as long as the player is on the ground
-        if (Input.GetButtonDown("Jump"))
-        {
-            // must have been grounded recently to allow jump
-            if (groundedTimer > 0)
-            {
-                // no more until we recontact ground
-                groundedTimer = 0;
- 
-                // Physics dynamics formula for calculating jump up velocity bas/Ded on height and gravity
-                verticalVelocity += Mathf.Sqrt(jumpHeight * 2 * gravityValue);
-            }
-        }
- 
-        // inject Y velocity before we use it
-        move.y = verticalVelocity;
- 
-        // call .Move() once only
-        controller.Move(move * Time.deltaTime * playerSpeed);
+
+        moveDirection.y -= gravitySpeed * Time.deltaTime; // Apply gravity
+        controller.Move(moveDirection * Time.deltaTime);
     }
 }
