@@ -59,7 +59,9 @@ public class PlayerControls : MonoBehaviour
         float angle = playerMovementAngle + cameraAngle;
         rotation = Quaternion.Euler(0f, angle, 0f);
         transform.rotation = rotation;
-        
+
+        var rotDot = Quaternion.Dot(rotation.normalized, Quaternion.identity);
+        Debug.Log(rotDot);
 
         // only align to motion if we are providing enough input
         if (move.magnitude > 0.05f)
@@ -67,6 +69,16 @@ public class PlayerControls : MonoBehaviour
             //Move player in the direction of the current rotation
             moveDir = rotation * Vector3.forward;
             move = moveDir;
+
+
+            if (Quaternion.Dot(rotation.normalized, Quaternion.identity) < 0.5)
+            {
+                gameObject.transform.forward = -move;
+            }
+            else
+            {
+                gameObject.transform.forward = move;
+            }
         }
  
         // allow jump as long as the player is on the ground
