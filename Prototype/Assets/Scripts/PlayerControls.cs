@@ -2,8 +2,15 @@ using UnityEngine;
 
 public class PlayerControls : MonoBehaviour
 {
-    CharacterController controller;
-    Vector3 moveDirection = Vector3.zero;
+    private CharacterController controller;
+    private float verticalVelocity;
+    private float groundedTimer;        // to allow jumping when going down ramps
+    private float playerSpeed = 2.0f;
+    private float jumpHeight = 1.0f;
+    private float gravityValue = 9.81f;
+    public float turnSpeed = 3.0f;
+    Vector3 move;
+
 
     Transform cameraTarget;
     float cameraPitch = 40.0f;
@@ -11,7 +18,6 @@ public class PlayerControls : MonoBehaviour
     float cameraDistance = 5.0f;
     bool lerpYaw = false;
     bool lerpDistance = false;
-
     public float cameraPitchSpeed = 2.0f;
     public float cameraPitchMin = -10.0f;
     public float cameraPitchMax = 80.0f;
@@ -19,22 +25,25 @@ public class PlayerControls : MonoBehaviour
     public float cameraDistanceSpeed = 5.0f;
     public float cameraDistanceMin = 2.0f;
     public float cameraDistanceMax = 12.0f;
-    public float moveDirectionSpeed = 6.0f;
-    public float turnSpeed = 3.0f;
-    public float jumpSpeed = 8.0f;
-    public float gravitySpeed = 20.0f;
 
-    public void Start()
+    private void Start()
     {
-        GetComponent<MeshRenderer>().material.color = Color.blue;
-
-        controller = GetComponent<CharacterController>();
-        cameraTarget = transform; // Camera will always face this
+        // always add a controller
+        controller = gameObject.AddComponent<CharacterController>();
+        cameraTarget = transform;
     }
 
-    // Fixme: save all Inputs in Update, then look at saved values here and in FixedUpdate
-    // Fixme: camera code should be in its own script probably
     public void LateUpdate()
+    {
+        CameraControl();
+    }
+
+    void FixedUpdate()
+    {
+        PlayerMovement();
+    }
+
+    void CameraControl()
     {
         // If mouse button down then allow user to look around
         if (Input.GetMouseButton(0) || Input.GetMouseButton(1))
@@ -83,38 +92,93 @@ public class PlayerControls : MonoBehaviour
         Camera.main.transform.LookAt(cameraTarget.position);
     }
 
-    // Fixme: add running
-    public void FixedUpdate()
+    void PlayerMovement()
     {
-        var h = Input.GetAxis("Horizontal");
-        var v = Input.GetAxis("Vertical");
+        var hInput = Input.GetAxis("Horizontal");
+        var vInput = Input.GetAxis("Vertical");
 
-        // Have camera follow if moving
-        if (!lerpYaw && (h != 0 || v != 0))
-            lerpYaw = true;
-
-        if (Input.GetMouseButton(1))
-            transform.rotation = Quaternion.Euler(0, cameraYaw, 0); // Face camera
-        else
-            transform.Rotate(0, h * turnSpeed, 0); // Turn left/right
-
-        // Only allow user control when on ground
-        if (controller.isGrounded)
+        bool groundedPlayer = controller.isGrounded;
+        if (groundedPlayer)
         {
-            if (Input.GetMouseButton(1))
-                moveDirection = new Vector3(h, 0, v); // Strafe
-            else
-                moveDirection = Vector3.forward * v; // Move forward/backward
-
-            moveDirection = transform.TransformDirection(moveDirection);
-            moveDirection *= moveDirectionSpeed;
-            if (Input.GetButton("Jump"))
-                moveDirection.y = jumpSpeed;
-            if (Input.GetKey(KeyCode.LeftShift))
-                moveDirection *= 10;
+            // cooldown interval to allow reliable jumping even whem coming down ramps
+            groundedTimer = 0.2f;
+        }
+        if (groundedTimer > 0)
+        {
+            groundedTimer -= Time.deltaTime;
         }
 
-        moveDirection.y -= gravitySpeed * Time.deltaTime; // Apply gravity
-        controller.Move(moveDirection * Time.deltaTime);
+        // slam into the ground
+        if (groundedPlayer && verticalVelocity < 0)
+        {
+            // hit ground
+            verticalVelocity = 0f;
+        }
+
+        // apply gravity always, to let us track down ramps properly
+        verticalVelocity -= gravityValue * Time.deltaTime;
+
+        // Only rotate player if right click held, this allows left click hold to not rotate the player
+        // If camera not in use have player turn in place
+        if (Input.GetMouseButton(1))
+        {
+            lerpYaw = false;
+            transform.rotation = Quaternion.Euler(0, cameraYaw, 0); // face camera
+            // gather lateral input control
+            move = new Vector3(hInput, 0, vInput);
+        }
+        else
+        {
+            lerpYaw = true;
+            transform.Rotate(0, hInput * turnSpeed, 0);
+            move = Vector3.forward * vInput;
+        }
+
+        // Local to world space
+        move = transform.TransformDirection(move);
+
+        // scale by speed
+        move *= playerSpeed;
+
+        // only align to motion if we are providing enough input
+        if (move.magnitude > 0.15f)
+        {
+            Vector3 fwd = transform.forward;
+
+
+            // use the 0.5f through arccos for the 30-degree demarcation
+            // angle past which we will consider you moving backwards.
+            // Keeps player facing frontwards
+            if (Vector3.Dot(move.normalized, fwd) < -0.5f)
+            {
+                // walking backwards
+                gameObject.transform.forward = -move;
+
+            }
+            else
+            {
+                gameObject.transform.forward = move;
+            }
+        }
+
+        if(controller.isGrounded)
+        {
+            if(Input.GetButton("Jump"))
+            {
+                if (groundedTimer > 0)
+                {
+                    // no more until we recontact ground
+                    groundedTimer = 0;
+
+                    // Physics dynamics formula for calculating jump up velocity bas/Ded on height and gravity
+                    verticalVelocity += Mathf.Sqrt(jumpHeight * 2 * gravityValue);
+                }
+            }
+        }
+
+        move.y = verticalVelocity;
+
+        // call .Move() once only
+        controller.Move(move * Time.deltaTime);
     }
 }
