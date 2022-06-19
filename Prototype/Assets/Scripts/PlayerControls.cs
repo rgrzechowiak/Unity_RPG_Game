@@ -3,12 +3,17 @@ using UnityEngine;
 public class PlayerControls : MonoBehaviour
 {
     private CharacterController controller;
+    
     private float verticalVelocity;
     private float groundedTimer;        // to allow jumping when going down ramps
+    [SerializeField]
     private float playerSpeed = 2.0f;
+    [SerializeField]
     private float jumpHeight = 1.0f;
+    [SerializeField]
     private float gravityValue = 9.81f;
-    public float turnSpeed = 3.0f;
+    [SerializeField]
+    private float characterTurnSpeed = 3.0f;
     Vector3 move;
 
 
@@ -18,13 +23,24 @@ public class PlayerControls : MonoBehaviour
     float cameraDistance = 5.0f;
     bool lerpYaw = false;
     bool lerpDistance = false;
-    public float cameraPitchSpeed = 2.0f;
-    public float cameraPitchMin = -10.0f;
-    public float cameraPitchMax = 80.0f;
-    public float cameraYawSpeed = 5.0f;
-    public float cameraDistanceSpeed = 5.0f;
-    public float cameraDistanceMin = 2.0f;
-    public float cameraDistanceMax = 12.0f;
+    [SerializeField]
+    private float cameraPitchSpeed = 2.0f;
+    [SerializeField]
+    private float cameraPitchMin = -10.0f;
+    [SerializeField]
+    private float cameraPitchMax = 80.0f;
+    [SerializeField]
+    private float cameraYawSpeed = 5.0f;
+    [SerializeField]
+    private float cameraDistanceSpeed = 5.0f;
+    [SerializeField]
+    private float cameraDistanceMin = 2.0f;
+    [SerializeField]
+    private float cameraDistanceMax = 12.0f;
+    [SerializeField]
+
+    Vector3 lastPos;
+    bool isMoving = false;
 
     private void Start()
     {
@@ -97,6 +113,8 @@ public class PlayerControls : MonoBehaviour
         var hInput = Input.GetAxis("Horizontal");
         var vInput = Input.GetAxis("Vertical");
 
+        isMoving = IsPlayerMoving(lastPos);
+
         bool groundedPlayer = controller.isGrounded;
         if (groundedPlayer)
         {
@@ -129,8 +147,18 @@ public class PlayerControls : MonoBehaviour
         }
         else
         {
-            lerpYaw = true;
-            transform.Rotate(0, hInput * turnSpeed, 0);
+            //If we are not moving then do not force the camera to be behind the player
+            // and if we start moving force the camera behind the player
+            if (!isMoving)
+            {
+                lerpYaw = false;
+            }
+            else
+            {
+                lerpYaw = true;
+            }
+
+            transform.Rotate(0, hInput * characterTurnSpeed, 0);
             move = Vector3.forward * vInput;
         }
 
@@ -178,7 +206,23 @@ public class PlayerControls : MonoBehaviour
 
         move.y = verticalVelocity;
 
+        lastPos = transform.position;
+
         // call .Move() once only
         controller.Move(move * Time.deltaTime);
+    }
+
+    // Checks if the player is moving
+    bool IsPlayerMoving(Vector3 lastPosition)
+    {
+        if(transform.position != lastPosition)
+        {
+            Debug.Log("Moving");
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
 }
