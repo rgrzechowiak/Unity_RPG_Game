@@ -38,6 +38,7 @@ public class PlayerControls : MonoBehaviour
     [SerializeField]
     private float cameraDistanceMax = 12.0f;
     [SerializeField]
+    public GameObject equippedWeapon;
 
     Vector3 lastPos;
     bool isMoving = false;
@@ -57,6 +58,11 @@ public class PlayerControls : MonoBehaviour
     void FixedUpdate()
     {
         PlayerMovement();
+    }
+
+    private void Update()
+    {
+        PerformWeaponAttack();
     }
 
     void CameraControl()
@@ -217,12 +223,19 @@ public class PlayerControls : MonoBehaviour
     {
         if(transform.position != lastPosition)
         {
-            Debug.Log("Moving");
             return true;
         }
         else
         {
             return false;
+        }
+    }
+
+    void PerformWeaponAttack()
+    {
+        if (Input.GetKeyDown(KeyCode.Alpha1))
+        {
+            equippedWeapon.GetComponent<Sword>().PerformAttack();
         }
     }
 }
